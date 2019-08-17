@@ -1,0 +1,219 @@
+<head>
+<script src='require.js'></script>
+<style type="text/css" media="screen">
+    #editor
+    {
+        width: 100%;
+        height: 50%;
+    }
+</style>
+<script>
+    var antlr4 = require('antlr4/index');
+
+    var TarsierLexer = require('./TarsierLexer').TarsierLexer;
+    var TarsierParser = require('./TarsierParser').TarsierParser;
+    var TarsierVisitor = require('./TarsierVisitor').TarsierVisitor;
+
+    var BasicVisitor = function () {
+        this.variableStorage = new Object();
+        TarsierVisitor.call(this);
+        return this;
+    };
+    BasicVisitor.prototype = Object.create(TarsierVisitor.prototype);
+    BasicVisitor.prototype.constructor = BasicVisitor;
+
+    BasicVisitor.prototype.visitAssignment_statement = function (ctx)
+    {
+        var varName = ctx.ID().getText();
+        var value = this.visit(ctx.expression());
+        this.variableStorage[varName] = value;
+    };
+
+    BasicVisitor.prototype.visitEqPar = function (ctx)
+    {
+        return this.visit(ctx.expression);
+    };
+
+    BasicVisitor.prototype.visitEqInt = function (ctx)
+    {
+
+        return parseInt(ctx.INT().getText());
+    };
+    BasicVisitor.prototype.visitEqStr= function(ctx){
+        return ctx.STRING().getText();
+    };
+    BasicVisitor.prototype.visitEqVar = function (ctx)
+    {
+        var varName = ctx.ID().getText();
+        return this.variableStorage[varName];
+    };
+    BasicVisitor.prototype.visitEqAdd = function (ctx)
+    {
+        var operator = ctx.operator;
+        var left = this.visit(ctx.left);
+        var right = this.visit(ctx.right);
+        if (operator.type === TarsierLexer.ADD){
+            return left + right;
+        }
+        else {
+            return left - right;
+        }
+
+    };
+
+    BasicVisitor.prototype.visitEqMul = function (ctx)
+    {
+        var operator = ctx.operator;
+        var left = this.visit(ctx.left);
+        var right = this.visit(ctx.right);
+        if (operator.type === TarsierLexer.MUL){
+            return left * right;
+        }
+        else {
+            return left / right;
+        }
+
+    };
+
+    BasicVisitor.prototype.visitBoolEq = function (ctx)
+    {
+        var left = this.visit(ctx.left);
+        var right = this.visit(ctx.right);
+        return left === right;
+    };
+    BasicVisitor.prototype.visitBoolGt = function (ctx)
+    {
+        var left = this.visit(ctx.left);
+        var right = this.visit(ctx.right);
+        return left > right;
+    };
+    BasicVisitor.prototype.visitBoolLt = function (ctx)
+    {
+        var left = this.visit(ctx.left);
+        var right = this.visit(ctx.right);
+        return left < right;
+    };
+
+    BasicVisitor.prototype.visitIf_statement = function(ctx)
+    {
+        var elseFragment = ctx.else_fragment();
+
+        if (this.visit(ctx.if_fragment()) === true)
+        {
+            this.visit(ctx.code_block());
+        }
+        else if (elseFragment !== null)
+        {
+            this.visit(elseFragment);
+        }
+    };
+
+    BasicVisitor.prototype.visitIf_fragment = function(ctx)
+    {
+        console.log(ctx);
+        return this.visit(ctx.boolean_expression());
+    };
+
+    BasicVisitor.prototype.visitElse_fragment = function (ctx) {
+        this.visit(ctx.code_block());
+    };
+    
+    BasicVisitor.prototype.visitFunction_list = function (ctx) {
+      var result = [];
+      var expressions = ctx.expression();
+       //returns a list of expressions
+
+
+      for (var index = 0; index < expressions.length; index++)
+      {
+          expr_item = this.visit(expressions[index]);
+          result.push(expr_item);
+      }
+      return result;
+    };
+
+    BasicVisitor.prototype.visitFunction_statement =function (ctx) {
+        var arguments = '-';
+        var functionList = ctx.function_list();
+        if (functionList !== null)
+        {
+            arguments = this.visit(functionList);
+        }
+        var result = "null";
+        var funcName = ctx.ID().getText();
+        if (funcName !== "print") {
+            
+            try
+            {   // pass functions to browser
+                var funcResult = window[funcName](arguments);
+                if (funcResult === null) {
+                    funcResult = "no result"
+                }
+                result = "Browser function " + funcName + " " + funcResult;
+            } catch (e) {
+                result = "Undefined function: " + funcName + " arguments " + arguments;
+            }
+            
+        }
+        else {
+            result = arguments;
+        }
+        var output = document.getElementById("output");
+        output.innerHTML = output.innerHTML + "<p>" + result +"</p>"
+    };
+
+    var visitor = new BasicVisitor();
+    var ErrorListener  = function () {
+      antlr4.error.ErrorListener.call(this);
+      return this;
+    };
+    ErrorListener.prototype = Object.create(antlr4.error.ErrorListener.prototype);
+    ErrorListener.prototype.constructor = ErrorListener;
+    ErrorListener.prototype.syntaxError = function (recognizer, offendingSymbol, line, columns, msg, e) {
+        var error = "Error at " + line + "," + columns + ":" + msg + ".";
+        var output = document.getElementById("output");
+        output.innerHTML = output.innerHTML + "<p><b>" + error + "</b></p>";
+    };
+
+
+    function parse()
+    {
+        var input = editor.getValue();
+
+        var output = document.getElementById("output");
+        output.innerHTML = "";
+
+        var chars = new antlr4.InputStream(input);
+        var lexer = new TarsierLexer(chars);
+        var tokens  = new antlr4.CommonTokenStream(lexer);
+
+        var parser = new TarsierParser(tokens);
+
+        var errorListener = new ErrorListener();
+        parser.removeErrorListeners();
+        parser.addErrorListener(errorListener);
+        parser.buildParseTrees = true;
+        // root node of tree is program
+        var tree = parser.program();
+        visitor.visitProgram(tree);
+
+        output.innerHTML += "<p>parsing complete</p>";
+    }
+
+</script>
+<body>
+    <div id="editor"></div>
+    <script src="./ace/ace.js" type="text/javascript" charset="utf-8"></script>
+    <script src="./my-mode.js" type="text/javascript" charset="utf-8"></script>
+    <script>
+            var editor = ace.edit("editor");
+            // editor.setTheme("ace/theme/cobalt"); // can change this to whatever theme we feel like
+            editor.session.setMode("ace/mode/my-mode");
+    </script>
+
+    <div>
+        <input type=button onclick="parse()" value="Parse" />
+        <div id="output"></div>
+    </div>
+</body>
+</head>
