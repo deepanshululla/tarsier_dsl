@@ -1,3 +1,0 @@
-hello @ 4
-9 # 12
-oscon $ { 5 # tarsier }
